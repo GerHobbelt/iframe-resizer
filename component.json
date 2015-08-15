@@ -12,11 +12,5 @@
   },
   "license": "MIT",
   "backend": {
-    "template": "content-link.tpl.haml",
-    "fixture": {
-      "url": "#",
-      "image": "",
-      "text": ""
-    }
   }
 }
