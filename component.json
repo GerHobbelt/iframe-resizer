@@ -1,0 +1,22 @@
+{
+  "name": "iframe-resizer",
+  "repo": "schoenwaldnils/iframe-resizer",
+  "version": "3.0.0",
+  "styles": [],
+  "scripts": [
+    "src/iframeResizer.js",
+    "src/iframeResizer.contentWindow.js"
+  ],
+  "templates": [],
+  "dependencies": {
+  },
+  "license": "MIT",
+  "backend": {
+    "template": "content-link.tpl.haml",
+    "fixture": {
+      "url": "#",
+      "image": "",
+      "text": ""
+    }
+  }
+}
