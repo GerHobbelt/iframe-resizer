@@ -9,6 +9,7 @@
  * Contributor: Ian Caunce - ian@hallnet.co.uk
  */
 
+
 ;(function(window) {
 	'use strict';
 
@@ -18,6 +19,7 @@
 		bodyBackground        = '',
 		bodyMargin            = 0,
 		bodyMarginStr         = '',
+		bodyObserver          = null,
 		bodyPadding           = '',
 		calculateWidth        = false,
 		doubleEventList       = {'resize':1,'click':1},
@@ -34,21 +36,25 @@
 		msgID                 = '[iFrameSizer]',  //Must match host page msg ID
 		msgIdLen              = msgID.length,
 		myID                  = '',
-		//publicMethods         = true,
+		observer              = null,
 		resetRequiredMethods  = {max:1,min:1,bodyScroll:1,documentElementScroll:1},
 		resizeFrom            = 'child',
-		targetOriginDefault   = '*',
+		sendPermit            = true,
 		target                = window.parent,
+		targetOriginDefault   = '*',
 		tolerance             = 0,
 		triggerLocked         = false,
 		triggerLockedTimer    = null,
+		throttledTimer        = 0,
 		width                 = 1,
-		widthCalcModeDefault  = 'max',
+		widthCalcModeDefault  = 'scroll',
 		widthCalcMode         = widthCalcModeDefault,
-		messageCallback       = function(){warn('MessageCallback function not defined');};
+		messageCallback       = function(){warn('MessageCallback function not defined');},
+		readyCallback         = function(){};
 
 
 	function addEventListener(el,evt,func){
+		/* istanbul ignore else */
 		if ('addEventListener' in window){
 			el.addEventListener(evt,func, false);
 		} else if ('attachEvent' in window){ //IE
@@ -56,16 +62,84 @@
 		}
 	}
 
+	function removeEventListener(el,evt,func){
+		/* istanbul ignore else */
+		if ('removeEventListener' in window){
+			el.removeEventListener(evt,func, false);
+		} else if ('detachEvent' in window){ //IE
+			el.detachEvent('on'+evt,func);
+		}
+	}
+
+	function capitalizeFirstLetter(string) {
+		return string.charAt(0).toUpperCase() + string.slice(1);
+	}
+
+	//Based on underscore.js
+	function throttle(func) {
+		var
+			context, args, result,
+			timeout = null,
+			previous = 0,
+			later = function() {
+				previous = getNow();
+				timeout = null;
+				result = func.apply(context, args);
+				if (!timeout) {
+					context = args = null;
+				}
+			};
+
+		return function() {
+			var now = getNow();
+
+			if (!previous) {
+				previous = now;
+			}
+
+			var remaining = throttledTimer - (now - previous);
+
+			context = this;
+			args = arguments;
+
+			if (remaining <= 0 || remaining > throttledTimer) {
+				if (timeout) {
+					clearTimeout(timeout);
+					timeout = null;
+				}
+
+				previous = now;
+				result = func.apply(context, args);
+
+				if (!timeout) {
+					context = args = null;
+				}
+
+			} else if (!timeout) {
+				timeout = setTimeout(later, remaining);
+			}
+
+			return result;
+		};
+	}
+
+	var getNow = Date.now || function() {
+		return new Date().getTime();
+	};
+
+	/* istanbul ignore next */
 	function formatLogMsg(msg){
 		return msgID + '[' + myID + ']' + ' ' + msg;
 	}
 
+	/* istanbul ignore next */
 	function log(msg){
 		if (logging && ('object' === typeof window.console)){
 			console.log(formatLogMsg(msg));
 		}
 	}
 
+	/* istanbul ignore next */
 	function warn(msg){
 		if ('object' === typeof window.console){
 			console.warn(formatLogMsg(msg));
@@ -88,6 +162,7 @@
 		startEventListeners();
 		inPageLinks = setupInPageLinks();
 		sendSize('init','Init message from host page');
+		readyCallback();
 	}
 
 	function readDataFromParent(){
@@ -103,7 +178,6 @@
 		calculateWidth     = (undefined !== data[2]) ? strBool(data[2])  : calculateWidth;
 		logging            = (undefined !== data[3]) ? strBool(data[3])  : logging;
 		interval           = (undefined !== data[4]) ? Number(data[4])   : interval;
-		//publicMethods      = (undefined !== data[5]) ? strBool(data[5])  : publicMethods;
 		autoResize         = (undefined !== data[6]) ? strBool(data[6])  : autoResize;
 		bodyMarginStr      = data[7];
 		heightCalcMode     = (undefined !== data[8]) ? data[8]           : heightCalcMode;
@@ -121,8 +195,9 @@
 
 			log('Reading data from page: ' + JSON.stringify(data));
 
-			messageCallback     = (undefined !== data.messageCallback ) ? data.messageCallback : messageCallback;
-			targetOriginDefault = (undefined !== data.targetOrigin ) ? data.targetOrigin : targetOriginDefault;
+			messageCallback     = (undefined !== data.messageCallback )         ? data.messageCallback         : messageCallback;
+			readyCallback       = (undefined !== data.readyCallback )           ? data.readyCallback           : readyCallback;
+			targetOriginDefault = (undefined !== data.targetOrigin )            ? data.targetOrigin            : targetOriginDefault;
 			heightCalcMode      = (undefined !== data.heightCalculationMethod ) ? data.heightCalculationMethod : heightCalcMode;
 			widthCalcMode       = (undefined !== data.widthCalculationMethod )  ? data.widthCalculationMethod  : widthCalcMode;
 		}
@@ -164,38 +239,42 @@
 	}
 
 
-	function addTriggerEvent(options){
-		function addListener(eventName){
-			function handleEvent(){
-				sendSize(options.eventName,options.eventType);
-			}
-
-			addEventListener(window,eventName,handleEvent);
+	function manageTriggerEvent(options){
+		function handleEvent(){
+			sendSize(options.eventName,options.eventType);
 		}
+
+		var listener = {
+			add:    function(eventName){
+				addEventListener(window,eventName,handleEvent);
+			},
+			remove: function(eventName){
+				removeEventListener(window,eventName,handleEvent);
+			}
+		};
 
 		if(options.eventNames && Array.prototype.map){
 			options.eventName = options.eventNames[0];
-			options.eventNames.map(addListener);
+			options.eventNames.map(listener[options.method]);
 		} else {
-			addListener(options.eventName);
+			listener[options.method](options.eventName);
 		}
 
-		log('Added event listener: ' + options.eventType);
+		log(capitalizeFirstLetter(options.method) + ' event listener: ' + options.eventType);
 	}
 
-	function initEventListeners(){
-		addTriggerEvent({ eventType: 'Animation Start',           eventNames: ['animationstart','webkitAnimationStart'] });
-		addTriggerEvent({ eventType: 'Animation Iteration',       eventNames: ['animationiteration','webkitAnimationIteration'] });
-		addTriggerEvent({ eventType: 'Animation End',             eventNames: ['animationend','webkitAnimationEnd'] });
-		addTriggerEvent({ eventType: 'Orientation Change',        eventName:  'orientationchange' });
-		addTriggerEvent({ eventType: 'Input',                     eventName:  'input' });
-		//addTriggerEvent({ eventType: 'Drag',                      eventName:  'drag' });
-		addTriggerEvent({ eventType: 'Print',                     eventName:  ['afterprint', 'beforeprint'] });
-		addTriggerEvent({ eventType: 'Transition End',            eventNames: ['transitionend','webkitTransitionEnd','MSTransitionEnd','oTransitionEnd','otransitionend'] });
-		//addTriggerEvent({ eventType: 'Window Clicked',            eventName:  'click' });
-		addTriggerEvent({ eventType: 'Mouse Up',                  eventName:  'mouseup' });
+	function manageEventListeners(method){
+		manageTriggerEvent({method:method, eventType: 'Animation Start',           eventNames: ['animationstart','webkitAnimationStart'] });
+		manageTriggerEvent({method:method, eventType: 'Animation Iteration',       eventNames: ['animationiteration','webkitAnimationIteration'] });
+		manageTriggerEvent({method:method, eventType: 'Animation End',             eventNames: ['animationend','webkitAnimationEnd'] });
+		manageTriggerEvent({method:method, eventType: 'Orientation Change',        eventName:  'orientationchange' });
+		manageTriggerEvent({method:method, eventType: 'Input',                     eventName:  'input' });
+		manageTriggerEvent({method:method, eventType: 'Print',                     eventName:  ['afterprint', 'beforeprint'] });
+		manageTriggerEvent({method:method, eventType: 'Transition End',            eventNames: ['transitionend','webkitTransitionEnd','MSTransitionEnd','oTransitionEnd','otransitionend'] });
+		manageTriggerEvent({method:method, eventType: 'Mouse Up',                  eventName:  'mouseup' });
+		manageTriggerEvent({method:method, eventType: 'Mouse Down',                eventName:  'mousedown' });
 		if('child' === resizeFrom){
-			addTriggerEvent({ eventType: 'IFrame Resized',        eventName:  'resize' });
+			manageTriggerEvent({method:method, eventType: 'IFrame Resized',        eventName:  'resize' });
 		}
 	}
 
@@ -219,12 +298,35 @@
 
 	function startEventListeners(){
 		if ( true === autoResize ) {
-			initEventListeners();
+			manageEventListeners('add');
 			setupMutationObserver();
 		}
 		else {
 			log('Auto Resize disabled');
 		}
+	}
+
+	function stopMsgsToParent(){
+		log('Disable outgoing messages');
+		sendPermit = false;
+	}
+
+	function removeMsgListener(){
+		log('Remove event listener: Message');
+		removeEventListener(window, 'message', receiver);
+	}
+
+	function disconnectMutationObserver(){
+		if (null !== bodyObserver){
+			bodyObserver.disconnect();
+		}
+	}
+
+	function teardown(){
+		stopMsgsToParent();
+		removeMsgListener();
+		manageEventListeners('remove');
+		disconnectMutationObserver();
 	}
 
 	function injectClearFixIntoBodyElement(){
@@ -267,7 +369,7 @@
 				hashData = decodeURIComponent(hash),
 				target   = document.getElementById(hashData) || document.getElementsByName(hashData)[0];
 
-			if (target){
+			if (undefined !== target){
 				jumpToTarget(target);
 			} else {
 				log('In page link (#' + hash + ') not found in iFrame, so sending to parent');
@@ -307,6 +409,7 @@
 		}
 
 		function enableInPageLinks(){
+			/* istanbul ignore else */
 			if(Array.prototype.forEach && document.querySelectorAll){
 				log('Setting up location.hash handlers');
 				bindAnchors();
@@ -317,6 +420,7 @@
 			}
 		}
 
+		/* istanbul ignore else */
 		if(inPageLinks.enable){
 			enableInPageLinks();
 		} else {
@@ -329,60 +433,59 @@
 	}
 
 	function setupPublicMethods(){
-		//if (publicMethods) {
-			log('Enable public methods');
+		log('Enable public methods');
 
-			window.parentIFrame = {
-				close: function closeF(){
-					sendMsg(0,0,'close');
-				},
+		window.parentIFrame = {
+			close: function closeF(){
+				sendMsg(0,0,'close');
+				teardown();
+			},
 
-				getId: function getIdF(){
-					return myID;
-				},
+			getId: function getIdF(){
+				return myID;
+			},
 
-				moveToAnchor: function moveToAnchorF(hash){
-					inPageLinks.findTarget(hash);
-				},
+			moveToAnchor: function moveToAnchorF(hash){
+				inPageLinks.findTarget(hash);
+			},
 
-				reset: function resetF(){
-					resetIFrame('parentIFrame.reset');
-				},
+			reset: function resetF(){
+				resetIFrame('parentIFrame.reset');
+			},
 
-				scrollTo: function scrollToF(x,y){
-					sendMsg(y,x,'scrollTo'); // X&Y reversed at sendMsg uses height/width
-				},
+			scrollTo: function scrollToF(x,y){
+				sendMsg(y,x,'scrollTo'); // X&Y reversed at sendMsg uses height/width
+			},
 
-				scrollToOffset: function scrollToF(x,y){
-					sendMsg(y,x,'scrollToOffset'); // X&Y reversed at sendMsg uses height/width
-				},
+			scrollToOffset: function scrollToF(x,y){
+				sendMsg(y,x,'scrollToOffset'); // X&Y reversed at sendMsg uses height/width
+			},
 
-				sendMessage: function sendMessageF(msg,targetOrigin){
-					sendMsg(0,0,'message',JSON.stringify(msg),targetOrigin);
-				},
+			sendMessage: function sendMessageF(msg,targetOrigin){
+				sendMsg(0,0,'message',JSON.stringify(msg),targetOrigin);
+			},
 
-				setHeightCalculationMethod: function setHeightCalculationMethodF(heightCalculationMethod){
-					heightCalcMode = heightCalculationMethod;
-					checkHeightMode();
-				},
+			setHeightCalculationMethod: function setHeightCalculationMethodF(heightCalculationMethod){
+				heightCalcMode = heightCalculationMethod;
+				checkHeightMode();
+			},
 
-				setWidthCalculationMethod: function setWidthCalculationMethodF(widthCalculationMethod){
-					widthCalcMode = widthCalculationMethod;
-					checkWidthMode();
-				},
+			setWidthCalculationMethod: function setWidthCalculationMethodF(widthCalculationMethod){
+				widthCalcMode = widthCalculationMethod;
+				checkWidthMode();
+			},
 
-				setTargetOrigin: function setTargetOriginF(targetOrigin){
-					log('Set targetOrigin: '+targetOrigin);
-					targetOriginDefault = targetOrigin;
-				},
+			setTargetOrigin: function setTargetOriginF(targetOrigin){
+				log('Set targetOrigin: '+targetOrigin);
+				targetOriginDefault = targetOrigin;
+			},
 
-				size: function sizeF(customHeight, customWidth){
-					var valString = ''+(customHeight?customHeight:'')+(customWidth?','+customWidth:'');
-					lockTrigger();
-					sendSize('size','parentIFrame.size('+valString+')', customHeight, customWidth);
-				}
-			};
-		//}
+			size: function sizeF(customHeight, customWidth){
+				var valString = ''+(customHeight?customHeight:'')+(customWidth?','+customWidth:'');
+				lockTrigger();
+				sendSize('size','parentIFrame.size('+valString+')', customHeight, customWidth);
+			}
+		};
 	}
 
 	function initInterval(){
@@ -394,18 +497,14 @@
 		}
 	}
 
-	function isNotSet(item){
-		return undefined === item || 0 === item;
-	}
-
-	function setupMutationObserver(){
+	function setupBodyMutationObserver(){
 		function addImageLoadListners(mutation) {
 			function addImageLoadListener(element){
-				var imageLoaded = sendSize.bind(null,'imageLoad','Image loaded',undefined,undefined);
-
-				if (isNotSet(element.height) || isNotSet(element.width)) {
-					log('Attach listerner to ' + element.src);
+				if (false === element.complete) {
+					log('Attach listeners to ' + element.src);
 					element.addEventListener('load', imageLoaded, false);
+					element.addEventListener('error', imageError, false);
+					elements.push(element);
 				}
 			}
 
@@ -413,17 +512,41 @@
 				addImageLoadListener(mutation.target);
 			} else if (mutation.type === 'childList'){
 				Array.prototype.forEach.call(
-					mutation.target.querySelectorAll('img'), 
+					mutation.target.querySelectorAll('img'),
 					addImageLoadListener
 				);
 			}
+		}
+
+		function removeFromArray(element){
+			elements.splice(elements.indexOf(element),1);
+		}
+
+		function removeImageLoadListener(element){
+			log('Remove listeners from ' + element.src);
+			element.removeEventListener('load', imageLoaded, false);
+			element.removeEventListener('error', imageError, false);
+			removeFromArray(element);
+		}
+
+		function imageEventTriggered(event,type,typeDesc){
+			removeImageLoadListener(event.target);
+			sendSize(type, typeDesc + ': ' + event.target.src, undefined, undefined);
+		}
+
+		function imageLoaded(event) {
+			imageEventTriggered(event,'imageLoad','Image loaded');
+		}
+
+		function imageError(event) {
+			imageEventTriggered(event,'imageLoadFailed','Image load failed');
 		}
 
 		function mutationObserved(mutations) {
 			sendSize('mutationObserver','mutationObserver: ' + mutations[0].target + ' ' + mutations[0].type);
 
 			//Deal with WebKit asyncing image loading when tags are injected into the page
-			addImageLoadListners(mutations[0]);
+			mutations.forEach(addImageLoadListners);
 		}
 
 		function createMutationObserver(){
@@ -437,27 +560,43 @@
 					characterDataOldValue : false,
 					childList             : true,
 					subtree               : true
-				},
+				};
 
-				observer = new MutationObserver(mutationObserved);
+			observer = new MutationObserver(mutationObserved);
 
 			log('Enable MutationObserver');
 			observer.observe(target, config);
+
+			return observer;
 		}
 
 		var
-			forceIntervalTimer = 0 > interval,
-			MutationObserver   = window.MutationObserver || window.WebKitMutationObserver;
+			elements         = [],
+			MutationObserver = window.MutationObserver || window.WebKitMutationObserver,
+			observer         = createMutationObserver();
 
-		if (MutationObserver){
+		return {
+			disconnect: function (){
+				if ('disconnect' in observer){
+					log('Disconnect MutationObserver');
+					observer.disconnect();
+					elements.forEach(removeImageLoadListener);
+				}
+			}
+		};
+	}
+
+	function setupMutationObserver(){
+		var	forceIntervalTimer = 0 > interval;
+
+		if (window.MutationObserver || window.WebKitMutationObserver){
 			if (forceIntervalTimer) {
 				initInterval();
 			} else {
-				createMutationObserver();
+				bodyObserver = setupBodyMutationObserver();
 			}
-		}
-		else {
-			warn('MutationObserver not supported in this browser!');
+		} else {
+			log('MutationObserver not supported in this browser!');
 			initInterval();
 		}
 	}
@@ -500,23 +639,35 @@
 		return parseInt(retVal,base);
 	}
 
+	function chkEventThottle(timer){
+		if(timer > throttledTimer/2){
+			throttledTimer = 2*timer;
+			log('Event throttle increased to ' + throttledTimer + 'ms');
+		}
+	}
+
 	//Idea from https://github.com/guardian/iframe-messenger
 	function getMaxElement(side,elements) {
 		var
 			elementsLength = elements.length,
+			elVal          = 0,
 			maxVal         = 0,
-			timer          = new Date().getTime();
+			Side           = capitalizeFirstLetter(side),
+			timer          = getNow();
 
 		for (var i = 0; i < elementsLength; i++) {
-			if (elements[i].getBoundingClientRect()[side] > maxVal) {
-				maxVal = elements[i].getBoundingClientRect()[side];
+			elVal = elements[i].getBoundingClientRect()[side] + getComputedBodyStyle('margin'+Side);
+			if (elVal > maxVal) {
+				maxVal = elVal;
 			}
 		}
 
-		timer = new Date().getTime() - timer;
+		timer = getNow() - timer;
 
 		log('Parsed '+elementsLength+' HTML elements');
 		log('Element position calculated in ' + timer + 'ms');
+
+		chkEventThottle(timer);
 
 		return maxVal;
 	}
@@ -627,23 +778,13 @@
 		};
 
 
-	function sendSize(triggerEvent, triggerEventDesc, customHeight, customWidth){
-
-		function recordTrigger(){
-			if (!(triggerEvent in {'reset':1,'resetPage':1,'init':1})){
-				log( 'Trigger event: ' + triggerEventDesc );
-			}
-		}
+	function sizeIFrame(triggerEvent, triggerEventDesc, customHeight, customWidth){
 
 		function resizeIFrame(){
 			height = currentHeight;
 			width  = currentWidth;
 
 			sendMsg(height,width,triggerEvent);
-		}
-
-		function isDoubleFiredEvent(){
-			return  triggerLocked && (triggerEvent in doubleEventList);
 		}
 
 		function isSizeChangeDetected(){
@@ -674,21 +815,36 @@
 			if (isForceResizableEvent() && isForceResizableCalcMode()){
 				resetIFrame(triggerEventDesc);
 			} else if (!(triggerEvent in {'interval':1})){
-				recordTrigger();
 				logIgnored();
 			}
 		}
 
 		var	currentHeight,currentWidth;
 
-		if (!isDoubleFiredEvent()){
-			if (isSizeChangeDetected() || 'init' === triggerEvent){
-				recordTrigger();
-				lockTrigger();
-				resizeIFrame();
-			} else {
-				checkDownSizing();
+		if (isSizeChangeDetected() || 'init' === triggerEvent){
+			lockTrigger();
+			resizeIFrame();
+		} else {
+			checkDownSizing();
+		}
+	}
+
+	var sizeIFrameThrottled = throttle(sizeIFrame);
+
+	function sendSize(triggerEvent, triggerEventDesc, customHeight, customWidth){
+		function recordTrigger(){
+			if (!(triggerEvent in {'reset':1,'resetPage':1,'init':1})){
+				log( 'Trigger event: ' + triggerEventDesc );
 			}
+		}
+
+		function isDoubleFiredEvent(){
+			return  triggerLocked && (triggerEvent in doubleEventList);
+		}
+
+		if (!isDoubleFiredEvent()){
+			recordTrigger();
+			sizeIFrameThrottled(triggerEvent, triggerEventDesc, customHeight, customWidth);
 		} else {
 			log('Trigger event cancelled: '+triggerEvent);
 		}
@@ -743,8 +899,10 @@
 			target.postMessage( msgID + message, targetOrigin);
 		}
 
-		setTargetOrigin();
-		sendToParent();
+		if(true === sendPermit){
+			setTargetOrigin();
+			sendToParent();
+		}
 	}
 
 	function receiver(event) {
@@ -784,7 +942,7 @@
 		}
 
 		function getData(){
-			return event.data.split(':')[1];
+			return event.data.substr(event.data.indexOf(':')+1);
 		}
 
 		function isMiddleTier(){
@@ -821,7 +979,7 @@
 				break;
 			default:
 				if (!isMiddleTier() && !isInitMsg()){
-					warn('Unexpected message ('+event.data+')');
+					//warn('Unexpected message ('+event.data+')');
 				}
 			}
 		}
@@ -841,6 +999,15 @@
 		}
 	}
 
-	addEventListener(window, 'message', receiver);
+	//Normally the parent kicks things off when it detects the iFrame has loaded.
+	//If this script is async-loaded, then tell parent page to retry init.
+	function chkLateLoaded(){
+		if('loading' !== document.readyState){
+			window.parent.postMessage('[iFrameResizerChild]Ready','*');
+		}
+	}
 
+	addEventListener(window, 'message', receiver);
+	chkLateLoaded();
+	
 })(window || {});

@@ -4,14 +4,14 @@
 [![Build Status](https://travis-ci.org/davidjbradshaw/iframe-resizer.png?branch=master)](https://travis-ci.org/davidjbradshaw/iframe-resizer)
 [![license](http://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat)](LICENSE)
 
-This library enables the automatic resizing of the height and width of both same and cross domain iFrames to fit the contained content. It provides a range of features to address the most common issues with using iFrames, these include:
+This library enables the automatic resizing of the height and width of both same and cross domain iFrames to fit their contained content. It provides a range of features to address the most common issues with using iFrames, these include:
 
 * Height and width resizing of the iFrame to content size.
 * Works with multiple and nested iFrames.
 * Automatic domain authentication for cross domain iFrames.
 * Provides a range of page size calculation methods to support complex CSS layouts.
 * Detects changes to the DOM that can cause the page to resize using [MutationObserver](https://developer.mozilla.org/en/docs/Web/API/MutationObserver).
-* Detects events that can cause the page to resize (Window Resize, CSS Animation and Transition, Device Orientation and Mouse events).
+* Detects events that can cause the page to resize (Window Resize, CSS Animation and Transition, Orientation Change and Mouse events).
 * Simplified messaging between iFrame and host page via [postMessage](https://developer.mozilla.org/en-US/docs/Web/API/window.postMessage).
 * Fixes in page links in iFrame and supports links between the iFrame and parent page.
 * Provides custom sizing and scrolling methods.
@@ -22,7 +22,7 @@ This library enables the automatic resizing of the height and width of both same
 The package contains two minified JavaScript files in the [js](js) folder. The first ([iframeResizer.min.js](https://raw.githubusercontent.com/davidjbradshaw/iframe-resizer/master/js/iframeResizer.min.js)) is for the page hosting the iFrames. It can be called with **native** JavaScript;
 
 ```js
-iFrameResize( [{options}], [css selector] || [iframe] );
+var iframes = iFrameResize( [{options}], [css selector] || [iframe] );
 ```
 
 or via **jQuery**. (See [notes](#browser-compatibility) below for using native version with IE8).
@@ -35,7 +35,7 @@ The second file ([iframeResizer.contentWindow.min.js](https://raw.github.com/dav
 
 ### Typical setup
 
-The normal configuration is to have the iFrame resize when the browser window changes size or the content of the iFrame changes. To set this up you need to configure one of the dimensions of the iFrame to a percentage and tell the library only to update the other dimension. Normally you would set the width to 100% and have the height scale to fit the content.
+The normal configuration is to have the iFrame resize when the browser window changes size or the content of the iFrame changes. To set this up you need to configure one of the dimensions of the iFrame to a percentage and tell the library to only update the other dimension. Normally you would set the width to 100% and have the height scale to fit the content.
 
 ```html
 <style>iframe{width:100%}</style>
@@ -43,7 +43,7 @@ The normal configuration is to have the iFrame resize when the browser window ch
 <script>iFrameResize({log:true})</script>
 ```
 
-Note that scrolling is set to 'no', as older versions of IE don't allow this to be turned off in code and can just slightly add a bit of extra space to the bottom of the content that it doesn't report when it returns the height. If you have problems, check the [troubleshooting](#troubleshooting) section below.
+Note that scrolling is set to 'no' in the iFrame tag, as older versions of IE don't allow this to be turned off in code and can just slightly add a bit of extra space to the bottom of the content that it doesn't report when it returns the height. If you have problems, check the [troubleshooting](#troubleshooting) section below.
 
 ### Example
 To see this working take a look at this [example](http://davidjbradshaw.com/iframe-resizer/example/) and watch the [console](https://developer.mozilla.org/en-US/docs/Tools/Web_Console).
@@ -189,7 +189,7 @@ Resize iFrame to content width.
 	default: 0
 	type:    integer
 
-Set the number of pixels the iFrame content size has to change by, before triggering resize of the iFrame.
+Set the number of pixels the iFrame content size has to change by, before triggering a resize of the iFrame.
 
 ### widthCalculationMethod
 
@@ -277,6 +277,12 @@ This option allows you to restrict the domain of the parent page, to prevent oth
 
 Receive message posted from the parent page with the `iframe.iFrameResizer.sendMessage()` method (See below for details).
 
+### readyCallback
+
+    type: function()
+
+This function is called once iFrame-Resizer has been initialized after receiving a call from the parent page. If you need to call any of the parentIFrame (See below) during page load, then they should be called from this callback.
+
 ### heightCalculationMethod / widthCalculationMethod
 
     default: null
@@ -360,7 +366,7 @@ Tell the iFrame to resize itself.
 
 ### sendMessage(message,[targetOrigin])
 
-Send data to the containing page, `message` can be any data type that can be serialized into JSON. The `targetOrigin` option is used to restrict where the message is sent to, in case you iFrame navigates away to another domain.
+Send data to the containing page, `message` can be any data type that can be serialized into JSON. The `targetOrigin` option is used to restrict where the message is sent to, in case your iFrame navigates away to another domain.
 
 
 
@@ -374,7 +380,7 @@ Bug reports and pull requests are welcome on the [issue tracker](https://github.
 
 
 ### IFrame not sizing correctly
-If a larger element of content is removed from the normal document flow, through the use of absolute positioning, it can prevent the browser working out the correct size of the page. In such cases you can change the [heightCalculationMethod](#heightcalculationmethod) to uses one of the other sizing methods, normally you will be best off selecting the **max** or **lowestElement** options to avoid cross browser differences.
+If a larger element of content is removed from the normal document flow, through the use of absolute positioning, it can prevent the browser working out the correct size of the page. In such cases you can change the [heightCalculationMethod](#heightcalculationmethod) to uses one of the other sizing methods.
 
 ### IFrame not downsizing
 The most likely cause of this problem is having set the height of an element to be 100% of the page somewhere in your CSS. This is normally on the `html` or `body` elements, but it could be on any element in the page. This can sometimes be got around by using the `taggedElement` height calculation method and added a `data-iframe-height` attribute to the element that you want to define the bottom position of the page. You may find it useful to use `position: relative` on this element to define a bottom margin or allow space for a floating footer.
@@ -387,6 +393,15 @@ Not having a valid [HTML document type](http://en.wikipedia.org/wiki/Document_ty
 
 ### IFrame not resizing
 The most common cause of this is not placing the [iframeResizer.contentWindow.min.js](https://raw.github.com/davidjbradshaw/iframe-resizer/master/js/iframeResizer.contentWindow.min.js) script inside the iFramed page. If the other page is on a domain outside your control and you can not add JavaScript to that page, then now is the time to give up all hope of ever getting the iFrame to size to the content. As it is impossible to work out the size of the contained page, without using JavaScript on both the parent and child pages.
+
+<!--
+### IFrame not responding to initialisation
+The initialisation call to the iFrame is triggered by the iFrame's onload event. If you use a script loader in your iFrame to load the `iframeResize.contentWindow.js` script, then it may be loaded after the init message has been sent. You can force the parent to resend the init message from the iFrame with the following line of code.
+
+```js
+window.parent.postMessage('[iFrameResizerChild]Ready','*');
+```
+-->
 
 ### IFrame not detecting CSS :hover events
 If your page resizes via CSS `:hover` events, these won't be detected by default. It is however possible to create `mouseover` and `mouseout` event listeners on the elements that are resized via CSS and have these events call the [parentIFrame.size()](##parentiframesize-customheight-customwidth) method. With jQuery this can be done as follows
@@ -439,17 +454,18 @@ iFrameResize({
 <i>Please see the notes section under [heightCalculationMethod](#heightcalculationmethod) to understand the limitations of the different options.</i>
 
 ### ParentIFrame not found errors
-The `parentIFrame` object becomes is created once the iFrame has been initially resized. If you wish to use it during page load you will need to poll for it becoming available.
+The `parentIFrame` object is created once the iFrame has been initially resized. If you wish to use it during page load you will need call it from the readyCallback.
 
-```js
-if(top !== self) { // Check we are in an iFrame
-	var interval = setInterval(function(){
-		if ('parentIFrame' in window) {
-			clearInterval(interval);
-			...
+```html
+<script>
+	window.iFrameResizer = {
+		readyCallback: function(){
+			var myId = window.parentIFrame.getId();
+			console.log('The ID of the iFrame in the parent page is: '+myId);
 		}
-	},32);
-}
+	}
+</script>
+<script src="js/iframeresizer.contentwindow.js"></script>
 ```
 
 ### PDF and OpenDocument files
@@ -471,14 +487,24 @@ Additionally requires support for [Array.prototype.forEach](https://developer.mo
 ```html
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <!--[if lte IE 8]>
-	<script type="text/javascript" src="../js/ie8.polyfils.min.js"></script>
+	<script type="text/javascript" src="js/ie8.polyfils.min.js"></script>
 <![endif]-->
 ```
 
 
+## Upgrading to version 3
+
+The requirements for IE8 support in version 3 have changed from version 2. If you still require IE8 support than you will need to ensure you include the new ie8.polyfil.js file, as outlined above.
+
+The parentIFrame methods object in the iFrame is now always available and the `enablePublicMethods` option has been removed. The `enableInPageLinks` option has been rename to `inPageLinks`.Fi
+
+
 ## Version History
 
-* v3.0.0 Added **taggedElement** size calculation method. [#199](https://github.com/davidjbradshaw/iframe-resizer/issues/199) Added in page options to iFrame. [#70](https://github.com/davidjbradshaw/iframe-resizer/issues/70) Added width calculation method options. Added methods to bound iFrames to comunicate from parent to iFrame. Ignore calls to setup an already bound iFrame. Improved event handling. Refactored MutationObserver functions. Moved IE8 polyfil from docs to own JS file and added *Funtion.prototype.bind()*. Added detection for tab focus. Fixed bug with nested inPageLinks. Public methods in iFrame now always enabled and option removed. Renamed enableInPageLinks to inPageLinks. Added double iFrame example.
+* v3.2.0 Added calculation of margin to LowestElement, LeftMostElement and TaggedElement calculation modes. Check callback function is a function before calling it. [#246](https://github.com/davidjbradshaw/iframe-resizer/issues/246) Fixed issue when scrollCallback changes the page position. [#247](https://github.com/davidjbradshaw/iframe-resizer/issues/247) Fix rounding issue when page is zoomed in Chrome [[thenewguy](https://github.com/thenewguy)].
+* v3.1.1 Added readyCallback to iFrame. Create iFrameResizer object on iFrame during setup, rather than waiting for init message to be returned from iFrame. Add ref to iFrame in host page log messages. [#245](https://github.com/davidjbradshaw/iframe-resizer/issues/245) Fix issue with iFrame not correctly resizing when multiple images are injected into the page [[mdgbayly](https://github.com/mdgbayly)]. [#246](https://github.com/davidjbradshaw/iframe-resizer/issues/246) Fix issue with including ':' in messages passed to iFrames.
+* v3.1.0 [#101](https://github.com/davidjbradshaw/iframe-resizer/issues/101) Support async loading of iFrame script. [#239](https://github.com/davidjbradshaw/iframe-resizer/issues/239) Throttle size checking to once per screen refresh (16ms). Fixed issue with hidden iFrames in FireFox. Improved handling of parent page events. [#236](https://github.com/davidjbradshaw/iframe-resizer/issues/236) Cope with iFrames that don't have a *src* value. [#242](https://github.com/davidjbradshaw/iframe-resizer/issues/242) Fix issue where iFrame is removed and then put back with same ID [[Alban Mouton](https://github.com/albanm)].
+* v3.0.0 Added *taggedElement* size calculation method. [#199](https://github.com/davidjbradshaw/iframe-resizer/issues/199) Added in page options to iFrame. [#70](https://github.com/davidjbradshaw/iframe-resizer/issues/70) Added width calculation method options. Added methods to bound iFrames to comunicate from parent to iFrame. Ignore calls to setup an already bound iFrame. Improved event handling. Refactored MutationObserver functions. Moved IE8 polyfil from docs to own JS file and added *Funtion.prototype.bind()*. Added detection for tab focus. Fixed bug with nested inPageLinks. Public methods in iFrame now always enabled and option removed. Renamed enableInPageLinks to inPageLinks. Added double iFrame example.
 * v2.8.10 Fixed bug with resizeFrom option not having default value in iFrame, if called from old version in parent page.
 * v2.8.9 [#220](https://github.com/davidjbradshaw/iframe-resizer/issues/220) Switched from using *deviceorientation* to *orientationchange* event listner [[Brandon Kobel](https://github.com/kobelb)].
 * v2.8.8 [#213](https://github.com/davidjbradshaw/iframe-resizer/issues/213) Ensure initCallback fires when iFrame not sized during initialisation. Check autoResize option before resizing from parent. Lower message about resize before initialisation from 'warn' to 'log'. Updated hover example.

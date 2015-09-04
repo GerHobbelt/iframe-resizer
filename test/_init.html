@@ -10,7 +10,7 @@
   <div id="qunit-fixture">
 
     <div style="width:600px;">
-      <iframe src="resources/frame.content.html" width="100%" scrolling="no"></iframe>
+      <iframe src="resources/frame.lateload.html" width="100%" scrolling="no"></iframe>
     </div>
 
   </div>
@@ -19,24 +19,26 @@
   <script src="../js/ie8.polyfils.min.js"></script>
   <script src="../js/iframeResizer.min.js"></script>
   <script>
-  
+
     'use strict';
     var msgId = '[iFrameSizerTest]:';
 
 		asyncTest( "postMessage Response", function() {
-
       iFrameResize({
-        log:true,
+        //log:true,
         bodyBackground:'wheat',
         heightCalculationMethod:'max',
         initCallback:function(iframe){
           ok( true, 'Receive init message back from iFrame.' );
           ok( 'iFrameResizer0' === iframe.id, 'iFrame id = iFrameResizer0.' );
-          start();
+          setTimeout(function(){
+            iframe.iFrameResizer.close();
+            start();
+          },10);
         }
       });
     });
-    
+
   </script>
 </body>
 </html>

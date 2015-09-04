@@ -29,9 +29,8 @@
     asyncTest( "getId", function() {
 
       iFrameResize({
-        log:true,
+        //log:true,
         bodyBackground:background,
-        enablePublicMethods:true,
         resizedCallback:function(messageData){
           ok( true, 'Receive init message back from iFrame.' );
           sendMessage('chkBackground');
